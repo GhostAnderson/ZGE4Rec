@@ -95,12 +95,12 @@ class ZINB_decoder(nn.Module):
     def __init__(self, latent_dim, input_dim) -> None:
         super().__init__()
         self.layer1 = nn.Linear(latent_dim, 128)
-        # self.layer2 = nn.Linear(64, 96)
-        # self.layer3 = nn.Linear(96, 128)
+        self.layer2 = nn.Linear(128, 256)
+        # self.layer3 = nn.Linear(256, 512)
 
-        self.pi_o = nn.Linear(128, input_dim)
-        self.disp_o = nn.Linear(128, input_dim)
-        self.mean_o = nn.Linear(128, input_dim)
+        self.pi_o = nn.Linear(256, input_dim)
+        self.disp_o = nn.Linear(256, input_dim)
+        self.mean_o = nn.Linear(256, input_dim)
         self._init_weights()
     
     def _init_weights(self):
@@ -111,7 +111,7 @@ class ZINB_decoder(nn.Module):
     def forward(self, x):
         
         x = F.relu(self.layer1(x))
-        # x = F.relu(self.layer2(x))
+        x = F.relu(self.layer2(x))
         # x = F.relu(self.layer3(x))
 
         pi = F.sigmoid(self.pi_o(x))
@@ -128,7 +128,7 @@ class NBLoss(nn.Module):
         self.reduction = reduction
     
     def forward(self, A, mu, theta):
-        theta = torch.minimum(theta, torch.Tensor([1e6]))
+        theta = torch.minimum(theta, torch.Tensor([1e6]).to(world.device))
         mu = mu * self.scale_factor
 
         t1 = torch.lgamma(theta+self.eps) + torch.lgamma(A+1.0) - torch.lgamma(A+theta+self.eps)
@@ -158,7 +158,7 @@ class ZINBLoss(nn.Module):
         nonzero_zinb = self.nbloss(A, mu, theta) - torch.log(1.0 - pi + self.eps)
 
         mu = mu * self.scale_factor
-        theta = torch.minimum(theta, torch.Tensor([1e6]))
+        theta = torch.minimum(theta, torch.Tensor([1e6]).to(world.device))
 
         zero_nb = torch.pow(theta/(theta+mu+self.eps), theta)
         zero_zinb = -torch.log(pi + ((1.0-pi)*zero_nb) + self.eps)
@@ -208,8 +208,8 @@ class LightGCN(BasicModel):
         self.Graph = self.dataset.getSparseGraph()
         print(f"lgn is already to go(dropout:{self.config['dropout']})")
 
-        self.user_zinb_decoder = ZINB_decoder(self.latent_dim, self.num_users)
-        self.item_zinb_decoder = ZINB_decoder(self.latent_dim, self.num_items)
+        self.user_zinb_decoder = ZINB_decoder(self.latent_dim, self.num_items)
+        self.item_zinb_decoder = ZINB_decoder(self.latent_dim, self.num_users)
 
         self.zinbloss = ZINBLoss()
 
@@ -277,8 +277,9 @@ class LightGCN(BasicModel):
     
     def getEmbedding(self, users, pos_items, neg_items):
         all_users, all_items = self.computer()
-        u_pi, u_mu, u_theta = self.user_zinb_decoder(all_users)
-        v_pi, v_mu, v_theta = self.item_zinb_decoder(all_items)
+        # u_pi, u_mu, u_theta, v_pi, v_mu, v_theta = None, None, None, None, None, None
+        u_pi, u_mu, u_theta = self.user_zinb_decoder(all_users[users])
+        v_pi, v_mu, v_theta = self.item_zinb_decoder(all_items[torch.hstack([pos_items,neg_items])])
         users_emb = all_users[users]
         pos_emb = all_items[pos_items]
         neg_emb = all_items[neg_items]
@@ -303,8 +304,8 @@ class LightGCN(BasicModel):
         
         loss = torch.mean(torch.nn.functional.softplus(neg_scores - pos_scores))
 
-        user_zinb_loss = self.zinbloss(A, u_pi, u_mu, u_theta)
-        item_zinb_loss = self.zinbloss(A.T, v_pi, v_mu, v_theta)
+        user_zinb_loss = self.zinbloss(A[users], u_pi, u_mu, u_theta)
+        item_zinb_loss = self.zinbloss(A.T[torch.hstack([pos, neg])], v_pi, v_mu, v_theta)
         
         return loss, reg_loss, user_zinb_loss, item_zinb_loss
        

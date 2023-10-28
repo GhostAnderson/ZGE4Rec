@@ -18,6 +18,9 @@ from tqdm import tqdm
 import model
 import multiprocessing
 from sklearn.metrics import roc_auc_score
+import tqdm
+import gc
+
 
 
 CORES = multiprocessing.cpu_count() // 2
@@ -44,22 +47,36 @@ def BPR_train_original(dataset, recommend_model, loss_class, epoch, neg_k=1, w=N
     aver_reg_loss = 0.
     aver_user_loss = 0.
     aver_item_loss = 0.
-    for (batch_i,
-         (batch_users,
-          batch_pos,
-          batch_neg)) in enumerate(utils.minibatch(users,
-                                                   posItems,
-                                                   negItems,
-                                                   batch_size=world.config['bpr_batch_size'])):
-        total_loss, loss, reg_loss,\
-              user_zinb_loss, item_zinb_loss = bpr.stageOne(batch_users, batch_pos, batch_neg, dataset.getA())
-        aver_loss      += total_loss
-        aver_bpr_loss  += loss
-        aver_reg_loss  += reg_loss
-        aver_user_loss += user_zinb_loss
-        aver_item_loss += item_zinb_loss
-        if world.tensorboard:
-            w.add_scalar(f'BPRLoss/BPR', total_loss, epoch * int(len(users) / world.config['bpr_batch_size']) + batch_i)
+    A = torch.Tensor(dataset.getA().toarray()).to(world.device)
+    with tqdm.tqdm(total=len(users)) as pbar:
+        for (batch_i,
+            (batch_users,
+            batch_pos,
+            batch_neg)) in enumerate(utils.minibatch(users,
+                                                    posItems,
+                                                    negItems,
+                                                    batch_size=world.config['bpr_batch_size'])):
+            total_loss, loss, reg_loss,\
+                user_zinb_loss, item_zinb_loss = bpr.stageOne(batch_users, batch_pos, batch_neg, A)
+            # for obj in gc.get_objects():
+            #     try:
+            #         if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+            #             print(type(obj), obj.size())
+            #     except:
+            #         pass
+            # print('--------------------')
+            aver_loss      += total_loss
+            aver_bpr_loss  += loss
+            aver_reg_loss  += reg_loss
+            aver_user_loss += user_zinb_loss
+            aver_item_loss += item_zinb_loss
+            if world.tensorboard:
+                w.add_scalar(f'TotalLoss/Total', total_loss, epoch * int(len(users) / world.config['bpr_batch_size']) + batch_i)
+                w.add_scalar(f'BPRLoss/BPR', loss, epoch * int(len(users) / world.config['bpr_batch_size']) + batch_i)
+                w.add_scalar(f'R2Loss/R2', reg_loss, epoch * int(len(users) / world.config['bpr_batch_size']) + batch_i)
+                w.add_scalar(f'UserZINB_Loss/ZINB', user_zinb_loss, epoch * int(len(users) / world.config['bpr_batch_size']) + batch_i)
+                w.add_scalar(f'ItemZINB_Loss/ZINB', item_zinb_loss, epoch * int(len(users) / world.config['bpr_batch_size']) + batch_i)
+            pbar.update(world.config['bpr_batch_size'])
     aver_loss      /= total_batch
     aver_bpr_loss  /= total_batch
     aver_reg_loss  /= total_batch
