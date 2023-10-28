@@ -95,12 +95,12 @@ class ZINB_decoder(nn.Module):
     def __init__(self, latent_dim, input_dim) -> None:
         super().__init__()
         self.layer1 = nn.Linear(latent_dim, 128)
-        self.layer2 = nn.Linear(128, 256)
-        self.layer3 = nn.Linear(256, 512)
+        # self.layer2 = nn.Linear(64, 96)
+        # self.layer3 = nn.Linear(96, 128)
 
-        self.pi_o = nn.Linear(512, input_dim)
-        self.disp_o = nn.Linear(512, input_dim)
-        self.mean_o = nn.Linear(512, input_dim)
+        self.pi_o = nn.Linear(128, input_dim)
+        self.disp_o = nn.Linear(128, input_dim)
+        self.mean_o = nn.Linear(128, input_dim)
         self._init_weights()
     
     def _init_weights(self):
@@ -111,8 +111,8 @@ class ZINB_decoder(nn.Module):
     def forward(self, x):
         
         x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
-        x = F.relu(self.layer3(x))
+        # x = F.relu(self.layer2(x))
+        # x = F.relu(self.layer3(x))
 
         pi = F.sigmoid(self.pi_o(x))
         mu = torch.clip(torch.exp(self.mean_o(x)), 1e-5, 1e6)
@@ -147,6 +147,7 @@ class NBLoss(nn.Module):
 
 class ZINBLoss(nn.Module):
     def __init__(self, ridge_lambda=0.0, eps=1e-10, scale_factor=1, reduction='mean') -> None:
+        super().__init__()
         self.nbloss = NBLoss(eps, scale_factor, reduction='none')
         self.ridge_lambda = ridge_lambda
         self.scale_factor = scale_factor

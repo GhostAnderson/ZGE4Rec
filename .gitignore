@@ -1,3 +1,5 @@
 .DS_STORE
 *.pyc
 *.txt
+/code/runs/*
+*.pyd

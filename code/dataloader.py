@@ -227,8 +227,9 @@ class Loader(BasicDataset):
     gowalla dataset
     """
 
-    def __init__(self,config = world.config,path="../data/gowalla"):
+    def __init__(self,config = world.config, path="../data/gowalla_NGCF"):
         # train or test
+        path="../data/gowalla_NGCF"
         cprint(f'loading [{path}]')
         self.split = config['A_split']
         self.folds = config['A_n_fold']
@@ -238,6 +239,7 @@ class Loader(BasicDataset):
         self.m_item = 0
         train_file = path + '/train.txt'
         test_file = path + '/test.txt'
+        train_sparse_matrix = path+ '/train_sparse_mat.npy'
         self.path = path
         trainUniqueUsers, trainItem, trainUser = [], [], []
         testUniqueUsers, testItem, testUser = [], [], []
@@ -259,6 +261,7 @@ class Loader(BasicDataset):
         self.trainUniqueUsers = np.array(trainUniqueUsers)
         self.trainUser = np.array(trainUser)
         self.trainItem = np.array(trainItem)
+        self.A = np.load(train_sparse_matrix, allow_pickle=True).item()
 
         with open(test_file) as f:
             for l in f.readlines():
@@ -405,6 +408,9 @@ class Loader(BasicDataset):
         for user in users:
             posItems.append(self.UserItemNet[user].nonzero()[1])
         return posItems
+    
+    def getA(self):
+        return self.A
 
     # def getUserNegItems(self, users):
     #     negItems = []
