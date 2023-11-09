@@ -10,7 +10,6 @@
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
-            "cwd": "C:\\Users\\caoyu\\Desktop\\ZGE4Rec\\code",
             "justMyCode": true
         }
     ]

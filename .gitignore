@@ -3,3 +3,5 @@
 *.txt
 /code/runs/*
 *.pyd
+*.tar
+*.so

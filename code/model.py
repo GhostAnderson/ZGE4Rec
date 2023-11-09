@@ -96,12 +96,12 @@ class ZINB_decoder(nn.Module):
         super().__init__()
         self.layer1 = nn.Linear(latent_dim, 128)
         self.layer2 = nn.Linear(128, 256)
-        # self.layer3 = nn.Linear(256, 512)
+        self.layer3 = nn.Linear(256, 512)
 
-        self.pi_o = nn.Linear(256, input_dim)
-        self.disp_o = nn.Linear(256, input_dim)
-        self.mean_o = nn.Linear(256, input_dim)
-        self._init_weights()
+        self.pi_o = nn.Linear(512, input_dim)
+        self.disp_o = nn.Linear(512, input_dim)
+        self.mean_o = nn.Linear(512, input_dim)
+        # self._init_weights()
     
     def _init_weights(self):
         nn.init.xavier_normal_(self.pi_o.weight)
@@ -112,9 +112,9 @@ class ZINB_decoder(nn.Module):
         
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
-        # x = F.relu(self.layer3(x))
+        x = F.relu(self.layer3(x))
 
-        pi = F.sigmoid(self.pi_o(x))
+        pi = torch.sigmoid(torch.clip(self.pi_o(x), -10, 10))
         mu = torch.clip(torch.exp(self.mean_o(x)), 1e-5, 1e6)
         theta = torch.clip(F.softplus(self.disp_o(x)), 1e-4, 1e4)
 
@@ -134,7 +134,7 @@ class NBLoss(nn.Module):
         t1 = torch.lgamma(theta+self.eps) + torch.lgamma(A+1.0) - torch.lgamma(A+theta+self.eps)
         t2 = (theta+A) * torch.log(1.0 + (mu/(theta+self.eps))) + (A * (torch.log(theta+self.eps) - torch.log(mu+self.eps)))
 
-        output = torch.nan_to_num(t1+t2, nan=float('inf'))
+        output = torch.nan_to_num(t1+t2, nan=0)
 
         if self.reduction == 'mean':
             output = torch.mean(output)
@@ -156,15 +156,14 @@ class ZINBLoss(nn.Module):
     
     def forward(self, A, pi, mu, theta):
         nonzero_zinb = self.nbloss(A, mu, theta) - torch.log(1.0 - pi + self.eps)
-
         mu = mu * self.scale_factor
         theta = torch.minimum(theta, torch.Tensor([1e6]).to(world.device))
 
         zero_nb = torch.pow(theta/(theta+mu+self.eps), theta)
         zero_zinb = -torch.log(pi + ((1.0-pi)*zero_nb) + self.eps)
-        result = torch.where(A<1e-8, zero_zinb, nonzero_zinb)
+        result = torch.where(A<1e-6, zero_zinb, nonzero_zinb)
 
-        result = torch.nan_to_num(result, nan=float('inf'))
+        result = torch.nan_to_num(result, nan=0)
 
         if self.reduction == 'mean':
             result = torch.mean(result)
@@ -297,6 +296,18 @@ class LightGCN(BasicModel):
         reg_loss = (1/2)*(userEmb0.norm(2).pow(2) + 
                          posEmb0.norm(2).pow(2)  +
                          negEmb0.norm(2).pow(2))/float(len(users))
+        
+        user_zinb_reg_loss = 0
+        for user_param in self.user_zinb_decoder.parameters():
+            assert not torch.isnan(user_param).any()
+            user_zinb_reg_loss += torch.norm(user_param)
+        item_zinb_reg_loss = 0
+        for item_param in self.item_zinb_decoder.parameters():
+            assert not torch.isnan(item_param).any()
+            item_zinb_reg_loss += torch.norm(item_param)
+
+        reg_loss += 0.1 * (user_zinb_reg_loss + item_zinb_reg_loss)
+
         pos_scores = torch.mul(users_emb, pos_emb)
         pos_scores = torch.sum(pos_scores, dim=1)
         neg_scores = torch.mul(users_emb, neg_emb)
@@ -304,8 +315,11 @@ class LightGCN(BasicModel):
         
         loss = torch.mean(torch.nn.functional.softplus(neg_scores - pos_scores))
 
-        user_zinb_loss = self.zinbloss(A[users], u_pi, u_mu, u_theta)
-        item_zinb_loss = self.zinbloss(A.T[torch.hstack([pos, neg])], v_pi, v_mu, v_theta)
+        user_A = A[users]
+        user_zinb_loss = self.zinbloss(user_A, u_pi, u_mu, u_theta)
+
+        item_A = A.T[torch.hstack([pos, neg])]
+        item_zinb_loss = self.zinbloss(item_A, v_pi, v_mu, v_theta)
         
         return loss, reg_loss, user_zinb_loss, item_zinb_loss
        
