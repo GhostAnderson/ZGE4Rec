@@ -5,6 +5,7 @@ import torch
 import numpy as np
 from tensorboardX import SummaryWriter
 import time
+import math
 import Procedure
 from os.path import join
 # ==============================
@@ -43,6 +44,9 @@ try:
         if epoch %5 == 0:
             cprint("[TEST]")
             Procedure.Test(dataset, Recmodel, epoch, w, world.config['multicore'])
+        if (epoch+1) % 10 == 0: 
+            bpr.alpha = 10 ** (1-math.log10(epoch+1))
+            bpr.beta = 10 ** (1-math.log10(epoch+1)) / 2
         output_information = Procedure.BPR_train_original(dataset, Recmodel, bpr, epoch, neg_k=Neg_k,w=w)
         print(f'EPOCH[{epoch+1}/{world.TRAIN_epochs}] {output_information}')
         torch.save(Recmodel.state_dict(), weight_file)

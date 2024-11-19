@@ -91,17 +91,20 @@ class PureMF(BasicModel):
         scores = torch.sum(users_emb*items_emb, dim=1)
         return self.f(scores)
 
-class ZINB_decoder(nn.Module):
-    def __init__(self, latent_dim, input_dim) -> None:
+class ZINB_encoder(nn.Module):
+    def __init__(self, input_dim) -> None:
         super().__init__()
-        self.layer1 = nn.Linear(latent_dim, 128)
-        self.layer2 = nn.Linear(128, 256)
-        self.layer3 = nn.Linear(256, 512)
 
-        self.pi_o = nn.Linear(512, input_dim)
-        self.disp_o = nn.Linear(512, input_dim)
-        self.mean_o = nn.Linear(512, input_dim)
-        # self._init_weights()
+        self.input_dim = input_dim
+        self.output_dim = 1
+        self.lantent_dim = 64
+
+        self.layer1 = nn.Linear(self.input_dim, self.lantent_dim)
+
+        self.pi_o = nn.Linear(self.lantent_dim, self.output_dim)
+        self.disp_o = nn.Linear(self.lantent_dim, self.output_dim)
+        self.mean_o = nn.Linear(self.lantent_dim, self.output_dim)
+        self._init_weights()
     
     def _init_weights(self):
         nn.init.xavier_normal_(self.pi_o.weight)
@@ -111,12 +114,10 @@ class ZINB_decoder(nn.Module):
     def forward(self, x):
         
         x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
-        x = F.relu(self.layer3(x))
 
         pi = torch.sigmoid(torch.clip(self.pi_o(x), -10, 10))
-        mu = torch.clip(torch.exp(self.mean_o(x)), 1e-5, 1e6)
-        theta = torch.clip(F.softplus(self.disp_o(x)), 1e-4, 1e4)
+        theta = torch.clip(F.softplus(self.disp_o(x)), 1e-4, 10)
+        mu = torch.clip(F.softplus(self.mean_o(x)), 1e-5, 10)
 
         return pi, mu, theta
 
@@ -207,8 +208,8 @@ class LightGCN(BasicModel):
         self.Graph = self.dataset.getSparseGraph()
         print(f"lgn is already to go(dropout:{self.config['dropout']})")
 
-        self.user_zinb_decoder = ZINB_decoder(self.latent_dim, self.num_items)
-        self.item_zinb_decoder = ZINB_decoder(self.latent_dim, self.num_users)
+        self.user_zinb_decoder = ZINB_encoder(self.latent_dim)
+        self.item_zinb_decoder = ZINB_encoder(self.latent_dim)
 
         self.zinbloss = ZINBLoss()
 
@@ -306,7 +307,7 @@ class LightGCN(BasicModel):
             assert not torch.isnan(item_param).any()
             item_zinb_reg_loss += torch.norm(item_param)
 
-        reg_loss += 0.1 * (user_zinb_reg_loss + item_zinb_reg_loss)
+        # reg_loss += 0.1 * (user_zinb_reg_loss + item_zinb_reg_loss)
 
         pos_scores = torch.mul(users_emb, pos_emb)
         pos_scores = torch.sum(pos_scores, dim=1)
@@ -323,17 +324,27 @@ class LightGCN(BasicModel):
         
         return loss, reg_loss, user_zinb_loss, item_zinb_loss
        
+    # def forward(self, users, items):
+    #     # compute embedding
+
+    #     u_pi, u_mu, u_theta = self.user_zinb_decoder(users)
+    #     v_pi, v_mu, v_theta = self.item_zinb_decoder(items)
+
+    #     # print('forward')
+    #     #all_users, all_items = self.computer()
+    #     users_emb = all_users[users]
+    #     items_emb = all_items[items]
+    #     inner_pro = torch.mul(users_emb, items_emb)
+    #     gamma     = torch.sum(inner_pro, dim=1)
+    #     return gamma, u_pi, u_mu, u_theta, v_pi, v_mu, v_theta
+    
     def forward(self, users, items):
         # compute embedding
         all_users, all_items = self.computer()
-
-        u_pi, u_mu, u_theta = self.user_zinb_decoder(all_users)
-        v_pi, v_mu, v_theta = self.item_zinb_decoder(all_items)
-
         # print('forward')
         #all_users, all_items = self.computer()
         users_emb = all_users[users]
         items_emb = all_items[items]
         inner_pro = torch.mul(users_emb, items_emb)
         gamma     = torch.sum(inner_pro, dim=1)
-        return gamma, u_pi, u_mu, u_theta, v_pi, v_mu, v_theta
+        return gamma

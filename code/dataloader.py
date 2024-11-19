@@ -227,9 +227,9 @@ class Loader(BasicDataset):
     gowalla dataset
     """
 
-    def __init__(self,config = world.config, path="../data/gowalla_NGCF"):
+    def __init__(self,config = world.config, path="./data/gowalla_NGCF"):
         # train or test
-        path="../data/gowalla_NGCF"
+        path="./data/gowalla_NGCF"
         cprint(f'loading [{path}]')
         self.split = config['A_split']
         self.folds = config['A_n_fold']

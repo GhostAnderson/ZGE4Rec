@@ -50,7 +50,9 @@ config['alpha'] = 1
 config['beta'] = 1
 
 GPU = torch.cuda.is_available()
-device = torch.device('cuda' if GPU else "cpu")
+MPS = False
+# MPS = torch.backends.mps.is_available()
+device = torch.device('cuda' if GPU else 'mps' if MPS else "cpu")
 CORES = multiprocessing.cpu_count() // 2
 seed = args.seed
 
