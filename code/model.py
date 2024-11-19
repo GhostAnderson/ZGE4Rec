@@ -97,14 +97,14 @@ class ZINB_encoder(nn.Module):
 
         self.input_dim = input_dim
         self.output_dim = 1
-        self.lantent_dim = 64
+        self.lantent_dim = 128
 
         self.layer1 = nn.Linear(self.input_dim, self.lantent_dim)
 
         self.pi_o = nn.Linear(self.lantent_dim, self.output_dim)
         self.disp_o = nn.Linear(self.lantent_dim, self.output_dim)
         self.mean_o = nn.Linear(self.lantent_dim, self.output_dim)
-        self._init_weights()
+        # self._init_weights()
     
     def _init_weights(self):
         nn.init.xavier_normal_(self.pi_o.weight)
