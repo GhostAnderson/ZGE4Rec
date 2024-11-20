@@ -162,12 +162,18 @@ class ZINBLoss(nn.Module):
 
         zero_nb = torch.pow(theta/(theta+mu+self.eps), theta)
         zero_zinb = -torch.log(pi + ((1.0-pi)*zero_nb) + self.eps)
+
+        zero_mask = torch.where(A<1e-6, 1, 0)
+        nonzero_mask = torch.where(A<1e-6, 0, 1)
+
         result = torch.where(A<1e-6, zero_zinb, nonzero_zinb)
+
 
         result = torch.nan_to_num(result, nan=0)
 
         if self.reduction == 'mean':
-            result = torch.mean(result)
+            # result = torch.mean(result)
+            result = torch.sum(result * zero_mask) / zero_mask.sum() + torch.sum(result * nonzero_mask) / nonzero_mask.sum()
         elif self.reduction == 'sum':
             result = torch.sum(result)
         elif self.reduction != 'none':
